@@ -6,8 +6,10 @@
 ##########################
 #### TELEGRAM CONFIG ####
 ##########################
-BOT_TOKEN="8340304769:AAGkFECVJc9I43hk4L5rc1Nn7DsgwCk2yqg"
-CHAT_ID="-4964031111"
+## Add Telegram Bot Token By Create Bot From botFather
+BOT_TOKEN=""
+## Add Telegram Chat ID / Group Chat ID With Bot You Created
+CHAT_ID=""
 
 # Settings
 LOGFILE="/var/log/laika.log"
