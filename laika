@@ -1,0 +1,77 @@
+#!/bin/bash
+############################
+# LAIKA SERVICE MONITOR TOOL
+############################
+
+##########################
+#### TELEGRAM CONFIG ####
+##########################
+BOT_TOKEN="8340304769:AAGkFECVJc9I43hk4L5rc1Nn7DsgwCk2yqg"
+CHAT_ID="-4964031111"
+
+# Settings
+LOGFILE="/var/log/laika.log"
+ALERT_DIR="/tmp/laika"
+COOLDOWN=600      # In Seconds
+MAX_RETRIES=3      # Retry Attempts
+RETRY_DELAY=5     # Seconds between retries
+
+# Create Alert Directory If Not Exist
+mkdir -p "$ALERT_DIR"
+
+# Function to Send Telegram Message
+notify() {
+    MESSAGE="$1"
+    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+         -d chat_id="$CHAT_ID" \
+         -d text="$MESSAGE" >/dev/null
+}
+
+# Ensure at least one service is provided
+if [ $# -eq 0 ]; then
+    echo "Error Found: Please Write <laika service1 service2 ...>"
+    exit 1
+fi
+
+# Service Monitoring Loop
+for SERVICE in "$@"; do
+    if ! systemctl is-active --quiet "$SERVICE"; then
+        ALERT_FILE="$ALERT_DIR/${SERVICE}.log"
+        NOW=$(date +%s)
+        LAST_ALERT=0
+        [ -f "$ALERT_FILE" ] && LAST_ALERT=$(cat "$ALERT_FILE")
+
+        MSG="ALERT: Service *$SERVICE* is DOWN on $(hostname) at $(date). Attempting restart..."
+        echo "$(date): $MSG" >> "$LOGFILE"
+
+        if (( NOW - LAST_ALERT >= COOLDOWN )); then
+            notify "$MSG"
+            echo "$NOW" > "$ALERT_FILE"
+        fi
+
+        # Retry Restart Loop
+        SUCCESS=false
+        for ((i=1;i<=MAX_RETRIES;i++)); do
+            systemctl start "$SERVICE"
+            sleep "$RETRY_DELAY"
+            if systemctl is-active --quiet "$SERVICE"; then
+                SUCCESS=true
+                break
+            fi
+        done
+
+        if $SUCCESS; then
+            MSG="SUCCESS: Service *$SERVICE* restarted successfully on $(hostname) after $i attempt(s)."
+            echo "$(date): $MSG" >> "$LOGFILE"
+            notify "$MSG"
+            rm -f "$ALERT_FILE"  # Reset Cooldown
+        else
+            MSG="FAILED: Could not restart *$SERVICE* on $(hostname) after $MAX_RETRIES attempts. Manual check required!"
+            echo "$(date): $MSG" >> "$LOGFILE"
+            if (( NOW - LAST_ALERT >= COOLDOWN )); then
+                notify "$MSG"
+                echo "$NOW" > "$ALERT_FILE"
+            fi
+        fi
+    fi
+done
